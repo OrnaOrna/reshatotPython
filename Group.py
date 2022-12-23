@@ -1,14 +1,11 @@
+import socket
+
+
 class Group:
-    groupName = None
-    groupID = None
-    password = None
-    members = []
-    namesMem = []
 
-    def __init__(self,groupName,groupID,password):
-        self.groupName = groupName
-        self.groupID = groupID
-        self.password = password
-
-
-
+    def __init__(self, name: str, group_id: int, password: str):
+        self.name: str = name
+        self.id: int = group_id
+        self.password: str = password
+        self.member_connections: list[socket.socket] = []
+        self.participant_names: list[str] = []
