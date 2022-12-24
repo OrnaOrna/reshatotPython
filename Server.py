@@ -1,11 +1,16 @@
 import socket
 import threading
+import time
 from Group import Group
+import atexit
 
 # Global connection variables
 host: str = '0.0.0.0'
 port: int = 33333
 buffer_size = 1024
+
+# Thread-safe event object to stop all client threads on shutdown
+closed = threading.Event()
 
 # Global list for all existing groups:
 group_list: list[Group] = []
@@ -48,7 +53,7 @@ def group_connect(client: socket.socket):
 
     group_index: int = -1
     # Wait in a loop until the client supplies the ID of an existing group, or until the client disconnects
-    while not group_found and not disconnected:
+    while not group_found and not disconnected and not closed.is_set():
         # Request the group ID:
         client.send("Enter the ID of the group you want to connect to".encode('ascii'))
         group_id = client.recv(buffer_size).decode('ascii')
@@ -60,22 +65,23 @@ def group_connect(client: socket.socket):
         # Search for the ID the client entered in the existing IDs
         id_list: [int] = [group.id for group in group_list]
 
-        try:
-            group_index = id_list.index(int(group_id))
-        except ValueError:
-            # If the client entered an invalid string
-            group_index = -1
-        if group_index >= 0:
-            group_found = True
-        else:
-            client.send("Invalid group ID\n".encode('ascii'))
+        if not disconnected:
+            try:
+                group_index = id_list.index(int(group_id))
+            except ValueError:
+                # If the client entered an invalid string
+                group_index = -1
+            if group_index >= 0:
+                group_found = True
+            else:
+                client.send("Invalid group ID\n".encode('ascii'))
 
     # The password is incorrect
     correct_password = False
 
     # Wait in a loop until the client supplies the correct password for the group,
     # or until the client disconnects
-    while not correct_password and not disconnected:
+    while not correct_password and not disconnected and not closed.is_set():
         client.send("Enter the password for the group".encode('ascii'))
         password = client.recv(buffer_size).decode('ascii')
 
@@ -83,10 +89,11 @@ def group_connect(client: socket.socket):
             client.close()
             disconnected = True
 
-        if group_list[group_index].password == password:
-            correct_password = True
-        else:
-            client.send("Invalid password\n".encode('ascii'))
+        if not disconnected:
+            if group_list[group_index].password == password:
+                correct_password = True
+            else:
+                client.send("Invalid password\n".encode('ascii'))
 
     if not disconnected:
         # Add the client to the group to the group:
@@ -167,7 +174,7 @@ def handle_client(client: socket.socket, group: Group):
     # Repeat until the client disconnects
     disconnected: bool = False
 
-    while True:
+    while not closed.is_set():
         # Receive a message from the client
         message = client.recv(buffer_size).decode('ascii')
         if message == "":
@@ -218,6 +225,18 @@ def receive(server: socket.socket):
     threading.Thread(target=setup_client, kwargs={"client": client}).start()
 
 
+# Graceful closing function - will definitely throw errors but whatever
+def close(server: socket.socket):
+    closed.set()
+    # Wait a bit for all messages to be sent
+    time.sleep(5)
+
+    for group in group_list:
+        for client in group.member_connections:
+            client.close()
+    server.close()
+
+
 def main():
     # Start the server
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -225,6 +244,9 @@ def main():
     server.listen()
     print(f"Started server at ip {socket.gethostbyname(socket.gethostname())} "
           f"and port {port}")
+
+    closed.clear()
+    atexit.register(close, server)
 
     # Endlessly listen for clients
     while True:
