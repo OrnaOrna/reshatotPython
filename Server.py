@@ -10,30 +10,6 @@ port: int = 33333
 group_list: list[Group] = []
 
 
-# Sending Messages To All Connected Clients
-def broadcast(message, groupID, client):
-    clients = []
-    print("the grouplst: ", group_list)  #
-    print("\n\nbroadcast func with: (message,group_id,client): ", message, groupID, client)  #
-    print("message: ", message)
-    print("group_id: ", groupID)
-    print("client: ", client)
-    print("\n\n")  #
-    for group in group_list:
-        print("group.group_id is :       ", group.id)
-        if int(group.id) == int(groupID):
-            clients = (group.member_connections).copy()
-            print("the clients: ", clients)
-            try:
-                clients.remove(client)
-            except:
-                break
-            break
-    print("the clients after : ", clients)
-    for c in clients:
-        c.send(message)
-
-
 # Send all setup stuff to a connecting client. At the end, calls handle_client with the client
 def setup_client(client: socket.socket):
     # Request the wanted option:
@@ -50,28 +26,6 @@ def setup_client(client: socket.socket):
         client.close()
     else:
         pass
-
-    # elif option == '2' or option == 'Client: 2':
-    #
-    # elif option == '3' or option == 'Client: 3':
-    #     pass
-
-    # if op == 1 or op == 2:
-    #     continue
-    # # Request And Store Nickname
-    # client.send('NICK'.encode('ascii'))
-    # nickname = client.recv(1024).decode('ascii')
-    # nicknames.append(name)
-    # clients.append(client)
-
-    # Print And Broadcast Nickname
-    # print("Nickname is {}".format(name))
-    # broadcast("{} joined!".format(name).encode('ascii'))
-    # client.send('Connected to server!'.encode('ascii'))
-
-    # Start Handling Thread For Client
-    # thread = threading.Thread(target=handle_client, args=(client, newGroup.group_id))
-    # thread.start()
 
 
 # Connect a client to an existing group
@@ -141,7 +95,7 @@ def group_connect(client: socket.socket):
 
         # Start the chat:
         client.send(f"Connected to group {group.name}".encode('ascii'))
-        broadcast(f"{name} has joined the chat!")
+        broadcast(f"{name} has joined the chat!", group, client)
         handle_client(client, group)
 
 
@@ -195,7 +149,8 @@ def group_create(client: socket.socket):
         group_list.append(group)
 
         # Tell the client the generated group's ID:
-        client.send((f"Started group {group_name} with ID {new_id}".encode('ascii'))
+        client.send(f"Started group {group_name} with ID {new_id}".encode('ascii'))
+        client.send("Send :disconnect: or close the program to exit".encode('ascii'))
 
         handle_client(client, group)
 
@@ -208,22 +163,42 @@ def exit_server(client: socket.socket):
 
 # Handling Messages From Clients
 def handle_client(client: socket.socket, group: Group):
+    # Repeat until the client disconnects
+    disconnected: bool = False
+
     while True:
-        try:
-            # Broadcasting Messages
-            message = client.recv(1024)
-            broadcast(message, group, client)
-        except:
-            # Removing And Closing Clients
-            for group in group_list:
-                if client in group.member_connections:
-                    index = (group.member_connections).index(client)
-                    (group.member_connections).pop(index)
-                    left = (group.participant_names)[index]
-                    (group.participant_names).pop(index)
-            client.close()
-            broadcast(f'{left} left!'.encode('ascii'), group, client)
+        # Receive a message from the client
+        message = client.recv(1024).decode('ascii')
+        if message == "":
+            disconnected = True
             break
+        elif message == ":disconnect:":
+            break
+        else:
+            broadcast(message, group, client)
+
+    # Send to the group that the client has left
+    client_index: int = group.member_connections.index(client)
+    client_name: str = group.participant_names[client_index]
+    broadcast(f"{client_name} has left!", group, client)
+
+    # Remove the client from the group
+    group.member_connections.pop(client_index)
+    group.participant_names.pop(client_index)
+
+    # If the client disconnected from the group only, return it to the menu;
+    # otherwise, disconnect it entirely
+    if disconnected:
+        client.close()
+    else:
+        setup_client(client)
+
+
+# Send a message to all clients in a group chat except the sending client
+def broadcast(message: str, group: Group, client: socket.socket):
+    for other in group.member_connections:
+        if other != client:
+            other.send(message.encode("ascii"))
 
 
 # Receiving / Listening Function
