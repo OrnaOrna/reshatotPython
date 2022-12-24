@@ -5,6 +5,7 @@ from Group import Group
 # Global connection variables
 host: str = '0.0.0.0'
 port: int = 33333
+buffer_size = 1024
 
 # Global list for all existing groups:
 group_list: list[Group] = []
@@ -14,7 +15,7 @@ group_list: list[Group] = []
 def setup_client(client: socket.socket):
     # Request the wanted option:
     client.send("Choose an option between 1 and 3".encode('ascii'))
-    option = client.recv(1024).decode('ascii')
+    option = client.recv(buffer_size).decode('ascii')
 
     if option == "1":
         group_connect(client)
@@ -35,7 +36,7 @@ def group_connect(client: socket.socket):
 
     # Request client's name:
     client.send("Enter your name".encode('ascii'))
-    name = client.recv(1024).decode('ascii')
+    name = client.recv(buffer_size).decode('ascii')
 
     # If the client has disconnected, mark it as disconnected
     if name == "":
@@ -50,7 +51,7 @@ def group_connect(client: socket.socket):
     while not group_found and not disconnected:
         # Request the group ID:
         client.send("Enter the ID of the group you want to connect to".encode('ascii'))
-        group_id = client.recv(1024).decode('ascii')
+        group_id = client.recv(buffer_size).decode('ascii')
 
         if group_id == "":
             client.close()
@@ -67,7 +68,7 @@ def group_connect(client: socket.socket):
         if group_index >= 0:
             group_found = True
         else:
-            client.send("Invalid group ID".encode('ascii'))
+            client.send("Invalid group ID\n".encode('ascii'))
 
     # The password is incorrect
     correct_password = False
@@ -76,7 +77,7 @@ def group_connect(client: socket.socket):
     # or until the client disconnects
     while not correct_password and not disconnected:
         client.send("Enter the password for the group".encode('ascii'))
-        password = client.recv(1024).decode('ascii')
+        password = client.recv(buffer_size).decode('ascii')
 
         if password == "":
             client.close()
@@ -85,7 +86,7 @@ def group_connect(client: socket.socket):
         if group_list[group_index].password == password:
             correct_password = True
         else:
-            client.send("Invalid password".encode('ascii'))
+            client.send("Invalid password\n".encode('ascii'))
 
     if not disconnected:
         # Add the client to the group to the group:
@@ -95,7 +96,7 @@ def group_connect(client: socket.socket):
 
         # Start the chat:
         client.send(f"Connected to group {group.name}".encode('ascii'))
-        broadcast(f"{name} has joined the chat!", group, client)
+        broadcast(f"{name} has joined the chat!", group, client, False)
         handle_client(client, group)
 
 
@@ -110,7 +111,7 @@ def group_create(client: socket.socket):
 
     # Request client's name:
     client.send("Enter your name".encode('ascii'))
-    name = client.recv(1024).decode('ascii')
+    name = client.recv(buffer_size).decode('ascii')
 
     if name == "":
         client.close()
@@ -119,14 +120,14 @@ def group_create(client: socket.socket):
     if not disconnected:
         # Request the new group's name:
         client.send("Enter the group's name".encode('ascii'))
-        group_name = client.recv(1024).decode('ascii')
+        group_name = client.recv(buffer_size).decode('ascii')
         if group_name == "":
             client.close()
             disconnected = True
 
     if not disconnected:
         client.send("Enter the group's password".encode('ascii'))
-        password = client.recv(1024).decode('ascii')
+        password = client.recv(buffer_size).decode('ascii')
         if password == "":
             client.close()
             disconnected = True
@@ -149,7 +150,7 @@ def group_create(client: socket.socket):
         group_list.append(group)
 
         # Tell the client the generated group's ID:
-        client.send(f"Started group {group_name} with ID {new_id}".encode('ascii'))
+        client.send(f"Started group {group_name} with ID {new_id}\n".encode('ascii'))
         client.send("Send :disconnect: or close the program to exit".encode('ascii'))
 
         handle_client(client, group)
@@ -168,19 +169,19 @@ def handle_client(client: socket.socket, group: Group):
 
     while True:
         # Receive a message from the client
-        message = client.recv(1024).decode('ascii')
+        message = client.recv(buffer_size).decode('ascii')
         if message == "":
             disconnected = True
             break
         elif message == ":disconnect:":
             break
         else:
-            broadcast(message, group, client)
+            broadcast(message, group, client, True)
 
     # Send to the group that the client has left
     client_index: int = group.member_connections.index(client)
     client_name: str = group.participant_names[client_index]
-    broadcast(f"{client_name} has left!", group, client)
+    broadcast(f"{client_name} has left!", group, client, False)
 
     # Remove the client from the group
     group.member_connections.pop(client_index)
@@ -195,14 +196,21 @@ def handle_client(client: socket.socket, group: Group):
 
 
 # Send a message to all clients in a group chat except the sending client
-def broadcast(message: str, group: Group, client: socket.socket):
-    for other in group.member_connections:
-        if other != client:
-            other.send(message.encode("ascii"))
+def broadcast(message: str, group: Group, client: socket.socket, include_name: bool):
+    if include_name:
+        client_index = group.member_connections.index(client)
+        client_name = group.participant_names[client_index]
+        for other in group.member_connections:
+            if other != client:
+                other.send(f"{client_name}: {message}".encode("ascii"))
+    else:
+        for other in group.member_connections:
+            if other != client:
+                other.send(f"{message}".encode("ascii"))
 
 
 # Receiving / Listening Function
-def receive():
+def receive(server: socket.socket):
     # Accept Connection
     client, address = server.accept()
     print(f"Connected with {address}")
@@ -210,7 +218,7 @@ def receive():
     threading.Thread(target=setup_client, kwargs={"client": client}).start()
 
 
-if __name__ == '__main__':
+def main():
     # Start the server
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.bind((host, port))
@@ -220,4 +228,8 @@ if __name__ == '__main__':
 
     # Endlessly listen for clients
     while True:
-        receive()
+        receive(server)
+
+
+if __name__ == '__main__':
+    main()
