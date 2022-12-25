@@ -3,6 +3,7 @@ import threading
 import time
 from Group import Group
 import atexit
+from typing import List
 
 # Global connection variables
 host: str = '0.0.0.0'
@@ -13,13 +14,13 @@ buffer_size = 1024
 closed = threading.Event()
 
 # Global list for all existing groups:
-group_list: list[Group] = []
+group_list: List[Group] = []
 
 
 # Send all setup stuff to a connecting client. At the end, calls handle_client with the client
 def setup_client(client: socket.socket):
     # Request the wanted option:
-    client.send("Choose an option between 1 and 3".encode('ascii'))
+    client.send("Please choose an option between 1 and 3:\n1. Connect to a group chat.\n2. Create a group chat.\n3. Exit the server.".encode('ascii'))
     option = client.recv(buffer_size).decode('ascii')
 
     if option == "1":
@@ -40,7 +41,7 @@ def group_connect(client: socket.socket):
     disconnected: bool = False
 
     # Request client's name:
-    client.send("Enter your name".encode('ascii'))
+    client.send("Please enter your name:".encode('ascii'))
     name = client.recv(buffer_size).decode('ascii')
 
     # If the client has disconnected, mark it as disconnected
@@ -55,7 +56,7 @@ def group_connect(client: socket.socket):
     # Wait in a loop until the client supplies the ID of an existing group, or until the client disconnects
     while not group_found and not disconnected and not closed.is_set():
         # Request the group ID:
-        client.send("Enter the ID of the group you want to connect to".encode('ascii'))
+        client.send("Please enter the ID of the group you want to connect to:".encode('ascii'))
         group_id = client.recv(buffer_size).decode('ascii')
 
         if group_id == "":
@@ -74,7 +75,7 @@ def group_connect(client: socket.socket):
             if group_index >= 0:
                 group_found = True
             else:
-                client.send("Invalid group ID\n".encode('ascii'))
+                client.send("Invalid group ID. Please try again.\n".encode('ascii'))
 
     # The password is incorrect
     correct_password = False
@@ -82,7 +83,7 @@ def group_connect(client: socket.socket):
     # Wait in a loop until the client supplies the correct password for the group,
     # or until the client disconnects
     while not correct_password and not disconnected and not closed.is_set():
-        client.send("Enter the password for the group".encode('ascii'))
+        client.send("Please enter the password for the group:".encode('ascii'))
         password = client.recv(buffer_size).decode('ascii')
 
         if password == "":
@@ -93,7 +94,7 @@ def group_connect(client: socket.socket):
             if group_list[group_index].password == password:
                 correct_password = True
             else:
-                client.send("Invalid password\n".encode('ascii'))
+                client.send("Invalid password. Please try again.\n".encode('ascii'))
 
     if not disconnected:
         # Add the client to the group to the group:
@@ -117,7 +118,7 @@ def group_create(client: socket.socket):
     disconnected: bool = False
 
     # Request client's name:
-    client.send("Enter your name".encode('ascii'))
+    client.send("Please enter your name: ".encode('ascii'))
     name = client.recv(buffer_size).decode('ascii')
 
     if name == "":
@@ -126,14 +127,14 @@ def group_create(client: socket.socket):
 
     if not disconnected:
         # Request the new group's name:
-        client.send("Enter the group's name".encode('ascii'))
+        client.send("Please enter the group's name: ".encode('ascii'))
         group_name = client.recv(buffer_size).decode('ascii')
         if group_name == "":
             client.close()
             disconnected = True
 
     if not disconnected:
-        client.send("Enter the group's password".encode('ascii'))
+        client.send("Please enter the group's password: ".encode('ascii'))
         password = client.recv(buffer_size).decode('ascii')
         if password == "":
             client.close()
@@ -157,7 +158,7 @@ def group_create(client: socket.socket):
         group_list.append(group)
 
         # Tell the client the generated group's ID:
-        client.send(f"Started group {group_name} with ID {new_id}\n".encode('ascii'))
+        client.send(f"Started group {group_name} with ID {new_id}.\n".encode('ascii'))
         client.send("Send :disconnect: or close the program to exit".encode('ascii'))
 
         handle_client(client, group)
@@ -165,8 +166,10 @@ def group_create(client: socket.socket):
 
 # Disconnect the client from the server
 def exit_server(client: socket.socket):
-    client.send("Disconnecting...".encode('ascii'))
+    client.send("Disconnected successfully.".encode('ascii'))
     client.close()
+    time.sleep(3.5)
+    exit(0)
 
 
 # Handling Messages From Clients
@@ -176,6 +179,7 @@ def handle_client(client: socket.socket, group: Group):
 
     while not closed.is_set():
         # Receive a message from the client
+
         message = client.recv(buffer_size).decode('ascii')
         if message == "":
             disconnected = True
