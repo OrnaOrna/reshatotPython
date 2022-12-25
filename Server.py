@@ -168,8 +168,7 @@ def group_create(client: socket.socket):
 def exit_server(client: socket.socket):
     client.send("Disconnected successfully.".encode('ascii'))
     client.close()
-    time.sleep(3.5)
-    exit(0)
+
 
 
 # Handling Messages From Clients
