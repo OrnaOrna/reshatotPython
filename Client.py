@@ -36,7 +36,11 @@ def disconnect(client: socket.socket):
 
 
 def main():
-    host = sys.argv[1]
+    if len(sys.argv) < 2:
+        host = "127.0.0.1"
+    else:
+        host = sys.argv[1]
+
     # Connect to the server
     client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     client.connect((host, port))
